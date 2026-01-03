@@ -6,27 +6,27 @@ import (
 	"sync"
 )
 
-//BusSubscriber defines subscription-related bus behavior
+// BusSubscriber defines subscription-related bus behavior
 type BusSubscriber interface {
-	Subscribe(topic string, fn interface{}) error
-	SubscribeAsync(topic string, fn interface{}, transactional bool) error
-	SubscribeOnce(topic string, fn interface{}) error
-	SubscribeOnceAsync(topic string, fn interface{}) error
-	Unsubscribe(topic string, handler interface{}) error
+	Subscribe(topic string, uid string, fn interface{}) error
+	SubscribeAsync(topic string, uid string, fn interface{}, transactional bool) error
+	SubscribeOnce(topic string, uid string, fn interface{}) error
+	SubscribeOnceAsync(topic string, uid string, fn interface{}) error
+	Unsubscribe(topic string, uid string) error
 }
 
-//BusPublisher defines publishing-related bus behavior
+// BusPublisher defines publishing-related bus behavior
 type BusPublisher interface {
 	Publish(topic string, args ...interface{})
 }
 
-//BusController defines bus control behavior (checking handler's presence, synchronization)
+// BusController defines bus control behavior (checking handler's presence, synchronization)
 type BusController interface {
 	HasCallback(topic string) bool
 	WaitAsync()
 }
 
-//Bus englobes global (subscribe, publish, control) bus behavior
+// Bus englobes global (subscribe, publish, control) bus behavior
 type Bus interface {
 	BusController
 	BusSubscriber
@@ -41,6 +41,7 @@ type EventBus struct {
 }
 
 type eventHandler struct {
+	uid           string
 	callBack      reflect.Value
 	flagOnce      bool
 	async         bool
@@ -71,9 +72,9 @@ func (bus *EventBus) doSubscribe(topic string, fn interface{}, handler *eventHan
 
 // Subscribe subscribes to a topic.
 // Returns error if `fn` is not a function.
-func (bus *EventBus) Subscribe(topic string, fn interface{}) error {
+func (bus *EventBus) Subscribe(topic string, uid string, fn interface{}) error {
 	return bus.doSubscribe(topic, fn, &eventHandler{
-		reflect.ValueOf(fn), false, false, false, sync.Mutex{},
+		uid: uid, callBack: reflect.ValueOf(fn),
 	})
 }
 
@@ -81,26 +82,26 @@ func (bus *EventBus) Subscribe(topic string, fn interface{}) error {
 // Transactional determines whether subsequent callbacks for a topic are
 // run serially (true) or concurrently (false)
 // Returns error if `fn` is not a function.
-func (bus *EventBus) SubscribeAsync(topic string, fn interface{}, transactional bool) error {
+func (bus *EventBus) SubscribeAsync(topic string, uid string, fn interface{}, transactional bool) error {
 	return bus.doSubscribe(topic, fn, &eventHandler{
-		reflect.ValueOf(fn), false, true, transactional, sync.Mutex{},
+		uid: uid, callBack: reflect.ValueOf(fn), async: true, transactional: transactional,
 	})
 }
 
 // SubscribeOnce subscribes to a topic once. Handler will be removed after executing.
 // Returns error if `fn` is not a function.
-func (bus *EventBus) SubscribeOnce(topic string, fn interface{}) error {
+func (bus *EventBus) SubscribeOnce(topic string, uid string, fn interface{}) error {
 	return bus.doSubscribe(topic, fn, &eventHandler{
-		reflect.ValueOf(fn), true, false, false, sync.Mutex{},
+		uid: uid, callBack: reflect.ValueOf(fn), flagOnce: true,
 	})
 }
 
 // SubscribeOnceAsync subscribes to a topic once with an asynchronous callback
 // Handler will be removed after executing.
 // Returns error if `fn` is not a function.
-func (bus *EventBus) SubscribeOnceAsync(topic string, fn interface{}) error {
+func (bus *EventBus) SubscribeOnceAsync(topic string, uid string, fn interface{}) error {
 	return bus.doSubscribe(topic, fn, &eventHandler{
-		reflect.ValueOf(fn), true, true, false, sync.Mutex{},
+		uid: uid, callBack: reflect.ValueOf(fn), flagOnce: true, async: true,
 	})
 }
 
@@ -117,11 +118,11 @@ func (bus *EventBus) HasCallback(topic string) bool {
 
 // Unsubscribe removes callback defined for a topic.
 // Returns error if there are no callbacks subscribed to the topic.
-func (bus *EventBus) Unsubscribe(topic string, handler interface{}) error {
+func (bus *EventBus) Unsubscribe(topic string, uid string) error {
 	bus.lock.Lock()
 	defer bus.lock.Unlock()
 	if _, ok := bus.handlers[topic]; ok && len(bus.handlers[topic]) > 0 {
-		bus.removeHandler(topic, bus.findHandlerIdx(topic, reflect.ValueOf(handler)))
+		bus.removeHandler(topic, bus.findHandlerIdx(topic, uid))
 		return nil
 	}
 	return fmt.Errorf("topic %s doesn't exist", topic)
@@ -183,11 +184,10 @@ func (bus *EventBus) removeHandler(topic string, idx int) {
 	bus.handlers[topic] = bus.handlers[topic][:l-1]
 }
 
-func (bus *EventBus) findHandlerIdx(topic string, callback reflect.Value) int {
+func (bus *EventBus) findHandlerIdx(topic string, uid string) int {
 	if _, ok := bus.handlers[topic]; ok {
 		for idx, handler := range bus.handlers[topic] {
-			if handler.callBack.Type() == callback.Type() &&
-				handler.callBack.Pointer() == callback.Pointer() {
+			if uid == handler.uid {
 				return idx
 			}
 		}

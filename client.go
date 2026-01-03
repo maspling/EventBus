@@ -43,7 +43,7 @@ func (client *Client) EventBus() Bus {
 	return client.eventBus
 }
 
-func (client *Client) doSubscribe(topic string, fn interface{}, serverAddr, serverPath string, subscribeType SubscribeType) {
+func (client *Client) doSubscribe(topic, uid string, fn interface{}, serverAddr, serverPath string, subscribeType SubscribeType) {
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Println("Server not found -", r)
@@ -55,25 +55,25 @@ func (client *Client) doSubscribe(topic string, fn interface{}, serverAddr, serv
 	if err != nil {
 		fmt.Errorf("dialing: %v", err)
 	}
-	args := &SubscribeArg{client.address, client.path, PublishService, subscribeType, topic}
+	args := &SubscribeArg{ClientAddr: client.address, ClientPath: client.path, ServiceMethod: PublishService, SubscribeType: subscribeType, Topic: topic, UID: uid}
 	reply := new(bool)
 	err = rpcClient.Call(RegisterService, args, reply)
 	if err != nil {
 		fmt.Errorf("Register error: %v", err)
 	}
 	if *reply {
-		client.eventBus.Subscribe(topic, fn)
+		client.eventBus.Subscribe(topic, uid, fn)
 	}
 }
 
-//Subscribe subscribes to a topic in a remote event bus
-func (client *Client) Subscribe(topic string, fn interface{}, serverAddr, serverPath string) {
-	client.doSubscribe(topic, fn, serverAddr, serverPath, Subscribe)
+// Subscribe subscribes to a topic in a remote event bus
+func (client *Client) Subscribe(topic, uid string, fn interface{}, serverAddr, serverPath string) {
+	client.doSubscribe(topic, uid, fn, serverAddr, serverPath, Subscribe)
 }
 
-//SubscribeOnce subscribes once to a topic in a remote event bus
-func (client *Client) SubscribeOnce(topic string, fn interface{}, serverAddr, serverPath string) {
-	client.doSubscribe(topic, fn, serverAddr, serverPath, SubscribeOnce)
+// SubscribeOnce subscribes once to a topic in a remote event bus
+func (client *Client) SubscribeOnce(topic, uid string, fn interface{}, serverAddr, serverPath string) {
+	client.doSubscribe(topic, uid, fn, serverAddr, serverPath, SubscribeOnce)
 }
 
 // Start - starts the client service to listen to remote events
@@ -88,8 +88,8 @@ func (client *Client) Start() error {
 		if err == nil {
 			service.wg.Add(1)
 			service.started = true
-			go http.Serve(l, nil)	
-		}	
+			go http.Serve(l, nil)
+		}
 	} else {
 		err = errors.New("Client service already started")
 	}

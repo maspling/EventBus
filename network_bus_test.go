@@ -28,7 +28,7 @@ func TestRegister(t *testing.T) {
 	serverPath := "/_server_bus_"
 	serverBus := NewServer(":2010", serverPath, New())
 
-	args := &SubscribeArg{serverBus.address, serverPath, PublishService, Subscribe, "topic"}
+	args := &SubscribeArg{ClientAddr: serverBus.address, ClientPath: serverPath, ServiceMethod: PublishService, SubscribeType: Subscribe, Topic: "topic", UID: "a"}
 	reply := new(bool)
 
 	serverBus.service.Register(args, reply)
@@ -56,7 +56,7 @@ func TestPushEvent(t *testing.T) {
 		}
 	}
 
-	clientBus.eventBus.Subscribe("topic", fn)
+	clientBus.eventBus.Subscribe("topic", "a", fn)
 	clientBus.service.PushEvent(clientArg, reply)
 	if !(*reply) {
 		t.Fail()
@@ -76,7 +76,7 @@ func TestServerPublish(t *testing.T) {
 	clientBus := NewClient(":2025", "/_client_bus_b", New())
 	clientBus.Start()
 
-	clientBus.Subscribe("topic", fn, ":2010", "/_server_bus_b")
+	clientBus.Subscribe("topic", "a", fn, ":2010", "/_server_bus_b")
 
 	serverBus.EventBus().Publish("topic", 10)
 
@@ -96,7 +96,7 @@ func TestNetworkBus(t *testing.T) {
 			t.Fail()
 		}
 	}
-	networkBusA.Subscribe("topic-A", fnA, ":2030", "/_net_bus_B")
+	networkBusA.Subscribe("topic-A", "a", fnA, ":2030", "/_net_bus_B")
 	networkBusB.EventBus().Publish("topic-A", 10)
 
 	fnB := func(a int) {
@@ -104,7 +104,7 @@ func TestNetworkBus(t *testing.T) {
 			t.Fail()
 		}
 	}
-	networkBusB.Subscribe("topic-B", fnB, ":2035", "/_net_bus_A")
+	networkBusB.Subscribe("topic-B", "b", fnB, ":2035", "/_net_bus_A")
 	networkBusA.EventBus().Publish("topic-B", 20)
 
 	networkBusA.Stop()
